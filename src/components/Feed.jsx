@@ -49,6 +49,7 @@ export default function Feed({ user }) {
     const [posts, setPosts] = useState([]);
     const [file, setFile] = useState(null);
     const [preview, setPreview] = useState(null);
+    const [text, setText] = useState('');
     const [uploading, setUploading] = useState(false);
     const fileInputRef = useRef(null);
 
@@ -72,25 +73,33 @@ export default function Feed({ user }) {
     };
 
     const handlePost = async () => {
-        if (!file) return;
+        if (!file && !text.trim()) return;
         setUploading(true);
         console.log("Starting upload process...");
 
         try {
-            // Compress and convert to Base64 string
-            console.log("Compressing image...");
-            const base64String = await compressImage(file);
-            console.log("Compression done. Size:", base64String.length);
-
-            console.log("Saving to Firestore...");
-            // Create a promise wrapper for addDoc to handle network timeouts
-            const savePost = addDoc(collection(db, 'posts'), {
-                imageUrl: base64String, // Saving directly to DB
+            const postData = {
                 authorName: authorName,
                 authorId: user.uid,
                 likes: [],
                 createdAt: serverTimestamp()
-            });
+            };
+
+            // Add text if provided
+            if (text.trim()) {
+                postData.text = text.trim();
+            }
+
+            // Add image if provided
+            if (file) {
+                console.log("Compressing image...");
+                const base64String = await compressImage(file);
+                console.log("Compression done. Size:", base64String.length);
+                postData.imageUrl = base64String;
+            }
+
+            console.log("Saving to Firestore...");
+            const savePost = addDoc(collection(db, 'posts'), postData);
 
             // Race against a 10s timeout
             const timeout = new Promise((_, reject) =>
@@ -102,6 +111,7 @@ export default function Feed({ user }) {
 
             setFile(null);
             setPreview(null);
+            setText('');
         } catch (err) {
             console.error("Post failed", err);
             alert("Error: " + err.message);
@@ -137,18 +147,28 @@ export default function Feed({ user }) {
             <main className="flex-1 p-4">
                 {/* Create Post Widget */}
                 <div className="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 mb-8">
+                    {/* Text Input */}
+                    <textarea
+                        value={text}
+                        onChange={(e) => setText(e.target.value)}
+                        placeholder="What's on your mind?"
+                        className="w-full p-3 bg-slate-50 border-0 rounded-xl focus:ring-2 focus:ring-indigo-500 transition-all text-sm resize-none mb-3"
+                        rows="3"
+                    />
+
+                    {/* Image Upload */}
                     <div
                         onClick={() => fileInputRef.current?.click()}
-                        className="border-2 border-dashed border-slate-200 rounded-2xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:bg-slate-50 transition-all group"
+                        className="border-2 border-dashed border-slate-200 rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:bg-slate-50 transition-all group"
                     >
                         {preview ? (
                             <img src={preview} alt="Preview" className="max-h-64 rounded-lg object-contain" />
                         ) : (
                             <>
-                                <div className="bg-indigo-50 p-4 rounded-full mb-3 group-hover:scale-110 transition-transform">
-                                    <ImageIcon className="w-6 h-6 text-indigo-500" />
+                                <div className="bg-indigo-50 p-3 rounded-full mb-2 group-hover:scale-110 transition-transform">
+                                    <ImageIcon className="w-5 h-5 text-indigo-500" />
                                 </div>
-                                <p className="text-sm font-medium text-slate-600">Tap to select an image</p>
+                                <p className="text-xs font-medium text-slate-600">Add an image (optional)</p>
                             </>
                         )}
                     </div>
@@ -160,7 +180,8 @@ export default function Feed({ user }) {
                         className="hidden"
                     />
 
-                    {preview && (
+                    {/* Post Button - Show if there's text OR image */}
+                    {(text.trim() || preview) && (
                         <button
                             onClick={handlePost}
                             disabled={uploading}

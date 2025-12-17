@@ -112,15 +112,24 @@ export default function Post({ post }) {
                 </div>
             </div>
 
+            {/* Text Content */}
+            {post.text && (
+                <div className="px-4 pt-2 pb-3">
+                    <p className="text-slate-800 whitespace-pre-wrap break-words">{post.text}</p>
+                </div>
+            )}
+
             {/* Image */}
-            <div className="relative group bg-slate-100 min-h-[300px] flex items-center justify-center">
-                <img
-                    src={post.imageUrl}
-                    alt="Post"
-                    className="w-full h-auto max-h-[600px] object-contain"
-                    loading="lazy"
-                />
-            </div>
+            {post.imageUrl && (
+                <div className="relative group bg-slate-100 min-h-[300px] flex items-center justify-center">
+                    <img
+                        src={post.imageUrl}
+                        alt="Post"
+                        className="w-full h-auto max-h-[600px] object-contain"
+                        loading="lazy"
+                    />
+                </div>
+            )}
 
             {/* Actions */}
             <div className="p-4">
