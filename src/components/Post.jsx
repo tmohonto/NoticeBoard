@@ -1,8 +1,24 @@
 import { useState, useEffect } from 'react';
-import { Heart, MessageCircle, Share2, Download, Send } from 'lucide-react';
+import { Heart, MessageCircle, Share2, Download, Send, Trash2 } from 'lucide-react';
 import { db, auth } from '../firebase';
-import { doc, updateDoc, arrayUnion, arrayRemove, collection, onSnapshot, addDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
+import { doc, updateDoc, arrayUnion, arrayRemove, collection, onSnapshot, addDoc, serverTimestamp, query, orderBy, deleteDoc } from 'firebase/firestore';
 import { cn } from '../lib/utils';
+
+// Helper function to format timestamp
+const formatTimestamp = (timestamp) => {
+    if (!timestamp) return 'Just now';
+
+    const now = new Date();
+    const postDate = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const diffInSeconds = Math.floor((now - postDate) / 1000);
+
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+    if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+
+    return postDate.toLocaleDateString();
+};
 
 export default function Post({ post }) {
     const [likes, setLikes] = useState(post.likes || []);
@@ -12,6 +28,7 @@ export default function Post({ post }) {
 
     const currentUser = auth.currentUser;
     const isLiked = likes.includes(currentUser?.uid);
+    const isAdmin = currentUser?.email?.startsWith('admin');
 
     // Realtime comments
     useEffect(() => {
@@ -47,6 +64,17 @@ export default function Post({ post }) {
         setNewComment('');
     };
 
+    const handleDelete = async () => {
+        if (window.confirm("Are you sure you want to delete this post? This cannot be undone.")) {
+            try {
+                await deleteDoc(doc(db, 'posts', post.id));
+            } catch (err) {
+                console.error("Error deleting post:", err);
+                alert("Failed to delete post: " + err.message);
+            }
+        }
+    };
+
     const downloadImage = async () => {
         try {
             const response = await fetch(post.imageUrl);
@@ -79,7 +107,7 @@ export default function Post({ post }) {
                     </div>
                     <div>
                         <h3 className="font-bold text-slate-800">{authorName}</h3>
-                        <p className="text-xs text-slate-400">Just now</p>
+                        <p className="text-xs text-slate-400">{formatTimestamp(post.createdAt)}</p>
                     </div>
                 </div>
             </div>
@@ -122,6 +150,16 @@ export default function Post({ post }) {
                     >
                         <Download className="w-5 h-5" />
                     </button>
+
+                    {isAdmin && (
+                        <button
+                            onClick={handleDelete}
+                            className="text-slate-400 hover:text-red-600 transition-colors p-2 hover:bg-red-50 rounded-full"
+                            title="Delete Post"
+                        >
+                            <Trash2 className="w-5 h-5" />
+                        </button>
+                    )}
                 </div>
 
                 {/* Comments Section */}

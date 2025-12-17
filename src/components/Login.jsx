@@ -20,14 +20,14 @@ export default function Login() {
         const outputUser = username.trim().toLowerCase();
         const outputPass = password.trim();
 
-        if (outputUser !== 'i' && outputUser !== 'you') {
-            setError("Access Denied: Only 'i' and 'you' are authorized.");
+        if (outputUser !== 'i' && outputUser !== 'you' && outputUser !== 'admin') {
+            setError("Access Denied: Invalid username or password.");
             setLoading(false);
             return;
         }
 
         if (outputPass !== '01') {
-            setError("Access Denied: Wrong password.");
+            setError("Access Denied: Invalid username or password.");
             setLoading(false);
             return;
         }
