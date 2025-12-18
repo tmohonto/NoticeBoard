@@ -3,7 +3,7 @@ import { auth, db } from '../firebase';
 import { signOut } from 'firebase/auth';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 import Post from './Post';
-import { LogOut, Image as ImageIcon, Loader2, Sparkles, Send } from 'lucide-react';
+import { LogOut, Image as ImageIcon, Loader2, Sparkles, Send, X } from 'lucide-react';
 
 // Helper to compress image to Base64 (max 800px)
 const compressImage = (file) => {
@@ -47,8 +47,8 @@ const compressImage = (file) => {
 
 export default function Feed({ user }) {
     const [posts, setPosts] = useState([]);
-    const [file, setFile] = useState(null);
-    const [preview, setPreview] = useState(null);
+    const [files, setFiles] = useState([]);
+    const [previews, setPreviews] = useState([]);
     const [text, setText] = useState('');
     const [uploading, setUploading] = useState(false);
     const fileInputRef = useRef(null);
@@ -58,22 +58,40 @@ export default function Feed({ user }) {
     useEffect(() => {
         const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+                .filter(post => {
+                    const isAdmin = user.email.startsWith('admin');
+                    // Show if: it's not hidden, OR if the current user is admin
+                    return !post.hidden || isAdmin;
+                }));
         });
         return () => unsubscribe();
-    }, []);
+    }, [user.email]);
 
-    const handleFileSelect = (e) => {
-        const selected = e.target.files[0];
-        if (!selected) return;
-        setFile(selected);
-        const reader = new FileReader();
-        reader.onloadend = () => setPreview(reader.result);
-        reader.readAsDataURL(selected);
+    const handleFileSelect = async (e) => {
+        if (!e.target.files || e.target.files.length === 0) return;
+
+        const selectedFiles = Array.from(e.target.files);
+        setFiles(prev => [...prev, ...selectedFiles]);
+
+        // Generate previews
+        const newPreviews = await Promise.all(selectedFiles.map(file => {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.readAsDataURL(file);
+            });
+        }));
+        setPreviews(prev => [...prev, ...newPreviews]);
+    };
+
+    const removeImage = (index) => {
+        setFiles(prev => prev.filter((_, i) => i !== index));
+        setPreviews(prev => prev.filter((_, i) => i !== index));
     };
 
     const handlePost = async () => {
-        if (!file && !text.trim()) return;
+        if (files.length === 0 && !text.trim()) return;
         setUploading(true);
         console.log("Starting upload process...");
 
@@ -90,12 +108,12 @@ export default function Feed({ user }) {
                 postData.text = text.trim();
             }
 
-            // Add image if provided
-            if (file) {
-                console.log("Compressing image...");
-                const base64String = await compressImage(file);
-                console.log("Compression done. Size:", base64String.length);
-                postData.imageUrl = base64String;
+            // Add images if provided
+            if (files.length > 0) {
+                console.log(`Compressing ${files.length} images...`);
+                const base64Images = await Promise.all(files.map(file => compressImage(file)));
+                console.log("Compression done.");
+                postData.imageUrls = base64Images;
             }
 
             console.log("Saving to Firestore...");
@@ -109,8 +127,8 @@ export default function Feed({ user }) {
             await Promise.race([savePost, timeout]);
             console.log("Saved successfully!");
 
-            setFile(null);
-            setPreview(null);
+            setFiles([]);
+            setPreviews([]);
             setText('');
         } catch (err) {
             console.error("Post failed", err);
@@ -156,32 +174,50 @@ export default function Feed({ user }) {
                         rows="3"
                     />
 
-                    {/* Image Upload */}
+                    {/* Image Previews */}
+                    {previews.length > 0 && (
+                        <div className="mb-4 grid grid-cols-2 gap-2">
+                            {previews.map((preview, index) => (
+                                <div key={index} className="relative group">
+                                    <img
+                                        src={preview}
+                                        alt={`Preview ${index + 1}`}
+                                        className="w-full h-32 object-cover rounded-lg border border-slate-100"
+                                    />
+                                    <button
+                                        onClick={() => removeImage(index)}
+                                        className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full hover:bg-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                                    >
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Image Upload Button */}
                     <div
                         onClick={() => fileInputRef.current?.click()}
                         className="border-2 border-dashed border-slate-200 rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:bg-slate-50 transition-all group"
                     >
-                        {preview ? (
-                            <img src={preview} alt="Preview" className="max-h-64 rounded-lg object-contain" />
-                        ) : (
-                            <>
-                                <div className="bg-indigo-50 p-3 rounded-full mb-2 group-hover:scale-110 transition-transform">
-                                    <ImageIcon className="w-5 h-5 text-indigo-500" />
-                                </div>
-                                <p className="text-xs font-medium text-slate-600">Add an image (optional)</p>
-                            </>
-                        )}
+                        <div className="bg-indigo-50 p-3 rounded-full mb-2 group-hover:scale-110 transition-transform">
+                            <ImageIcon className="w-5 h-5 text-indigo-500" />
+                        </div>
+                        <p className="text-xs font-medium text-slate-600">
+                            {previews.length > 0 ? "Add more images" : "Add images"}
+                        </p>
                     </div>
                     <input
                         type="file"
                         ref={fileInputRef}
                         onChange={handleFileSelect}
                         accept="image/*"
+                        multiple
                         className="hidden"
                     />
 
-                    {/* Post Button - Show if there's text OR image */}
-                    {(text.trim() || preview) && (
+                    {/* Post Button - Show if there's text OR images */}
+                    {(text.trim() || files.length > 0) && (
                         <button
                             onClick={handlePost}
                             disabled={uploading}
